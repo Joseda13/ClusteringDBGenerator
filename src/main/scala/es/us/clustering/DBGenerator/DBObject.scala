@@ -1,28 +1,40 @@
 package es.us.clustering.DBGenerator
 
 import java.util.concurrent.ThreadLocalRandom
-
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.functions._
 import spark.mllib.Utils
-
 import scala.util.Random
 
 object DBObject {
 
-  def createDataBase(features: Int, tags: Int, number_cluster: Int, desviation: Float, dummies: Int, minimumPoints: Int, maximumPoints: Int, destination: String, index: Int): Unit = {
+  /**
+    * Return a dataset with the configuration parameters
+    *
+    * @param features Number of relevant features of the dataset
+    * @param tags Number of different value to construct Gaussian Distribution
+    * @param numberClusters Number of clusters
+    * @param deviation Standard deviation for the gaussian distribution
+    * @param dummies Number of dummies features of the dataset
+    * @param minimumPoints Instances minimum per cluster
+    * @param maximumPoints Instances maximum per cluster
+    * @param destination Path to saved destination dataset
+    * @example createDataBase(5,5,7,0.3f,3,500,1000,"results/datasets")
+    */
+  def createDataBase(features: Int, tags: Int, numberClusters: Int, deviation: Float, dummies: Int, minimumPoints: Int, maximumPoints: Int, destination: String): Unit = {
 
     println("*******************************")
     println("*******DATASET GENERATOR*******")
     println("*******************************")
-    println("Configuration:")
-    println("\tClusters: " + number_cluster)
+    println("Configuration parameters:")
+    println("\tClusters: " + numberClusters)
     println("\tInstances per cluster between: " + minimumPoints + " - " + maximumPoints)
     println("\tClasses: " + tags)
     println("\tFeatures: " + features)
     println("\tSave directory: " + destination)
     println("Running...\n")
 
+    //Initialize Spark Session
     val spark = SparkSession.builder()
       .appName(s"CreateDataBase")
       .master("local[*]")
@@ -30,16 +42,22 @@ object DBObject {
 
     import spark.implicits._
 
-    //Create all permutations between the tags into the number of features
+    //Calculate all permutations between the tags into the number of features
     val aux = Array.fill(features)(0 to tags-1).flatten.combinations(features).flatMap(_.permutations).toArray
 
+    //Select a random element to the all previously permutations
     val shuffleArray = Random.shuffle(aux.toSeq)
+    val elementRandom = shuffleArray.head
 
-    val resultTotal = Array.ofDim[Int](30,features)
+    //Create an array with two dimensions (tags*tags X features) and save an element random from previously permutations calculate
+    val resultTotal = Array.ofDim[Int]((tags*tags),features)
+    for (i <- 0 until resultTotal.length){
+      resultTotal.update(i, elementRandom)
+    }
 
-    var result = Array.ofDim[Int](number_cluster,features)
     var indexResult = 1
 
+    //For each permutation it is checked whether it complies with the restrictions to be included in the final result
     for (arrayAux <- shuffleArray){
 
       val arrayAuxCombinations = pairCombinationArrayInt(arrayAux)
@@ -72,24 +90,31 @@ object DBObject {
 
     println(s"Different valid combinations number with $tags tags and $features features: " + (indexResult) )
 
-    result = Random.shuffle(resultTotal.take(indexResult).toSeq).toArray.take(number_cluster)
+    //Create auxiliary result array with two dimensions (number of clusters X features)
+    var result = Array.ofDim[Int](numberClusters,features)
+    if (indexResult < numberClusters){
+      createDataBase(features, tags, numberClusters, deviation, dummies, minimumPoints, maximumPoints, destination)
+    }else {
+      result = Random.shuffle(resultTotal.take(indexResult).toSeq).toArray.take(numberClusters)
+    }
 
-    val testResult = spark.sparkContext.parallelize(result).toDF()
+    //Show the Gaussian distribution for each cluster choosen
+    val dataResult = spark.sparkContext.parallelize(result).toDF().withColumnRenamed("value", "Gaussian Distribution")
     println("Combinations choosen:")
-    testResult.show(number_cluster, false)
+    dataResult.show(numberClusters, false)
 
     //Normalized the value of each tag between the range [0,1]
     val resultNormalized = result.map(v => v.map(value => ( value.toFloat / (tags-1)) ))
 
     //Add the cluster id of each features array normalized
-    val resultClusterAndNormalized = for (cluster <- 0 to number_cluster-1) yield {
+    val resultClusterAndNormalized = for (cluster <- 0 to numberClusters-1) yield {
       (cluster, resultNormalized.apply(cluster))
     }
 
     //Create a RDD with the cluster id and the features array normalized
     val RDDDataBase = spark.sparkContext.parallelize(resultClusterAndNormalized)
 
-    //Create the DataBase with the gaussian value in the features values
+    //Create the DataBase with the Gaussian value in the features values
     val dataBase = RDDDataBase.flatMap { x =>
       val points = ThreadLocalRandom.current.nextInt(minimumPoints, maximumPoints)
       val clusterNumber = x._1
@@ -98,7 +123,7 @@ object DBObject {
       for {indexPoint <- 0 until points} yield {
 
         val arrayGaussian = for {indexGaussian <- 0 until features} yield {
-          var valueGaussian = getGaussian(x._2(indexGaussian), desviation)
+          val valueGaussian = getGaussian(x._2(indexGaussian), deviation)
 
           valueGaussian
         }
@@ -107,6 +132,7 @@ object DBObject {
       }
     }.cache()
 
+    //Realize the Homotecy transform to the dataset
     val dataHomotecia = dataBase.map{
       row =>
 
@@ -130,6 +156,7 @@ object DBObject {
     val resultHomotecia = resultData.select("min", "max").withColumn("index", monotonically_increasing_id())
       .filter(value => value.getLong(2) > 0).collect()
 
+    //Create the result dataset add columns with dummies values
     val resultDataBase = dataBase.map{
       row =>
 
@@ -151,19 +178,25 @@ object DBObject {
 
     }
 
-    println("Saving DataBase ...\n")
+    println("Saving dataset ...\n")
 
-    //Save the DataBase
+    //Save the dataset
     resultDataBase.map(x => x._1 + "," + x._2.toString.replace("(", "").replace(")", "").replace("Vector", "").replace(" ",""))
       .coalesce(1, shuffle = true)
-      .saveAsTextFile(s"K$number_cluster-N$features-D$dummies-I($minimumPoints-$maximumPoints)-${Utils.whatTimeIsIt()}")
+      .saveAsTextFile(s"K$numberClusters-N$features-D$dummies-I($minimumPoints-$maximumPoints)-${Utils.whatTimeIsIt()}")
 
-    println("DataBase saved!")
+    println("Dataset saved!")
   }
 
-  def pairCombinationArrayInt (base: Array[Int]): Array[(Int,Int)] = {
+  /**
+    * Return an array with all elements group by Par(Int,Int) from the first element to the last element without repetition or turning back
+    *
+    * @param base An array whose number of columns is equal to the number of features
+    * @example pairCombinationArrayInt(data)
+    */
+  def pairCombinationArrayInt(base: Array[Int]): Array[(Int,Int)] = {
 
-    var result = new Array[(Int,Int)]((base.length * (base.length - 1)) / 2 )
+    val result = new Array[(Int,Int)]((base.length * (base.length - 1)) / 2 )
 
     var cont = 0
 
@@ -180,7 +213,14 @@ object DBObject {
     result
   }
 
-  def filterDatasetByIndex (data: Array[Row], id: Long): Row = {
+  /**
+    * Return a specific row from a dataset filter for a id cluster
+    *
+    * @param data Dataset with all data
+    * @param id The cluster id
+    * @example filterDatasetByIndex(data, 1)
+    */
+  def filterDatasetByIndex(data: Array[Row], id: Long): Row = {
     val result = data.filter(row => row.getLong(2) == (8589934592l * (id + 1))).apply(0)
 
     result
