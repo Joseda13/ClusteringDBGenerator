@@ -15,7 +15,7 @@ The variables that must be modified for the correct operation of the generator a
 * K: Set the number of clusters of the dataset. This number will be less than or equal to the number of tags elevated to the square previously established.
 * minimumPoints: Set the minimum number of points for each cluster of the dataset.
 * maximumPoints: Set the maximum number of points for each cluster of the dataset. Each of the clusters will have a random number of points between this value and the previously set value.
-* desviation: Set the standard deviation for each cluster into the Gaussian distribution.
+* deviation: Set the standard deviation for each cluster into the Gaussian distribution.
 * destination: Set the path to the saved destination for the dataset.
 ## Result
 By default, result dataset are saved in the folder set in the "destination" parameter or in the project's default path. Result are named "K[Clusters]-N[Features]-D[Dummies]-I[(minimumPoints-maximumPoints)]-DateTime" that contains part-00000 file.
