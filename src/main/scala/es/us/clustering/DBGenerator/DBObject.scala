@@ -31,6 +31,7 @@ object DBObject {
     println("\tInstances per cluster between: " + minimumPoints + " - " + maximumPoints)
     println("\tClasses: " + tags)
     println("\tFeatures: " + features)
+    println("\tDummies: " + dummies)
     println("\tSave directory: " + destination)
     println("Running...\n")
 
