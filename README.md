@@ -21,6 +21,6 @@ The variables that must be modified for the correct operation of the generator a
 By default, result dataset are saved in the folder set in the "destination" parameter or in the project's default path. Result are named "K[Clusters]-N[Features]-D[Dummies]-I[(minimumPoints-maximumPoints)]-DateTime" that contains part-00000 file.
 ## Contributors
 * José David Martín-Fernández.
-* José María Luna-Romera.
+* [José María Luna-Romera.](https://github.com/josemarialuna)
 * José C. Riquelme Santos.
 * Beatriz Pontes Balanza.
